@@ -10,15 +10,14 @@ import pandas as pd
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 MODEL_PATH = os.path.join(BASE_DIR, "model", "model.pkl")
-PREPROCESSOR_PATH = os.path.join(BASE_DIR, "model", "preprocessor.pkl")
 
 
 # --------------------------------------------------
-# LOAD MODEL AND PREPROCESSOR
+# LOAD MODEL
 # --------------------------------------------------
 
 def load_model():
-    """Load the trained ML model."""
+    """Load the trained ML model (which is the full end-to-end Pipeline)."""
 
     if not os.path.exists(MODEL_PATH):
         raise FileNotFoundError(
@@ -29,16 +28,24 @@ def load_model():
     return joblib.load(MODEL_PATH)
 
 
-def load_preprocessor():
-    """Load the saved data preprocessor."""
+# --------------------------------------------------
+# COLUMN REORDERING UTILITY
+# --------------------------------------------------
 
-    if not os.path.exists(PREPROCESSOR_PATH):
-        raise FileNotFoundError(
-            "preprocessor.pkl not found. The preprocessor needs to be added "
-            "to the model folder."
-        )
-
-    return joblib.load(PREPROCESSOR_PATH)
+def align_columns(df):
+    """Ensure DataFrame columns match the exact names and order used in training."""
+    column_order = [
+        'Age', 'Gender', 'Tenure', 'Usage Frequency', 'Support Calls', 
+        'Payment Delay', 'Subscription Type', 'Contract Length', 
+        'Total Spend', 'Last Interaction'
+    ]
+    
+    # Filter to only the expected columns and rearrange in exact order
+    missing_cols = [col for col in column_order if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required feature columns for prediction: {missing_cols}")
+        
+    return df[column_order]
 
 
 # --------------------------------------------------
@@ -62,21 +69,21 @@ def predict_customer(customer_data):
     if not isinstance(customer_data, pd.DataFrame):
         raise TypeError("Customer data must be a dictionary or pandas DataFrame.")
 
-    # Load model and preprocessor only when prediction is requested
+    # Align the feature names and order exactly to match training data
+    customer_data = align_columns(customer_data)
+
+    # Load model pipeline only when prediction is requested
     model = load_model()
-    preprocessor = load_preprocessor()
 
-    # Apply preprocessing
-    processed_data = preprocessor.transform(customer_data)
-
-    # Make prediction
-    prediction = model.predict(processed_data)[0]
+    # Pass the RAW data directly to the model pipeline.
+    # The pipeline will automatically run the ColumnTransformer internally.
+    prediction = model.predict(customer_data)[0]
 
     # Get probability if the model supports it
     probability = None
 
     if hasattr(model, "predict_proba"):
-        probability = model.predict_proba(processed_data)[0][1]
+        probability = model.predict_proba(customer_data)[0][1]
 
     # Convert prediction to readable result
     if prediction == 1:
@@ -104,15 +111,14 @@ def predict_csv(data):
         raise TypeError("Input must be a pandas DataFrame.")
 
     model = load_model()
-    preprocessor = load_preprocessor()
 
     # Keep original data for displaying results
     result_data = data.copy()
 
-    # Apply preprocessing
-    processed_data = preprocessor.transform(data)
+    # Align columns for the machine learning data
+    processed_data = align_columns(data)
 
-    # Predictions
+    # Predictions (Passing the raw, aligned DataFrame directly to the pipeline)
     predictions = model.predict(processed_data)
 
     result_data["Prediction"] = predictions
