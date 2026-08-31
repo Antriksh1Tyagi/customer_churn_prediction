@@ -2,6 +2,11 @@ import os
 import sys
 import pandas as pd
 import streamlit as st
+from prediction import predict_customer, predict_csv
+from dashboard import show_dashboard
+from export_utils import create_csv, create_pdf_report
+# Add your Gemini module import here
+from gemini import generate_retention_advice 
 
 
 # ==================================================
@@ -425,7 +430,6 @@ if page == " Dashboard":
 # ==================================================
 # SINGLE PREDICTION
 # ==================================================
-
 elif page == " Single Prediction":
 
     st.title("Single Customer Prediction")
@@ -453,14 +457,11 @@ elif page == " Single Prediction":
             st.subheader("Prediction Result")
 
             if result["prediction"]:
-
                 st.error(
                     " High Churn Risk — "
                     "Customer is likely to churn."
                 )
-
             else:
-
                 st.success(
                     " Low Churn Risk — "
                     "Customer is not likely to churn."
@@ -494,6 +495,24 @@ elif page == " Single Prediction":
                 st.progress(
                     min(max(probability, 0), 1)
                 )
+                
+            # --------------------------------------------------
+            # INTEGRATED: GEMINI AI RETENTION ADVICE
+            # --------------------------------------------------
+            st.divider()
+            st.subheader("🤖 AI Retention Insights")
+            
+            # Combine the user form inputs with the machine learning model output
+            ai_input_data = customer.copy()
+            ai_input_data["Churn Probability"] = f"{probability * 100:.2f}%" if probability is not None else "N/A"
+            ai_input_data["Risk Level"] = risk if probability is not None else "N/A"
+            
+            # Use a spinner while generating the analysis response
+            with st.spinner("Gemini is analyzing customer metrics..."):
+                advice = generate_retention_advice(ai_input_data)
+                
+            # Render the AI markdown response beautifully
+            st.markdown(advice)
 
         except FileNotFoundError:
 
