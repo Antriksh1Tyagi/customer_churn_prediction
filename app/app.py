@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 
+
 # ==================================================
 # PROJECT PATHS
 # ==================================================
@@ -22,7 +23,7 @@ if APP_DIR not in sys.path:
 from prediction import predict_customer, predict_csv
 from dashboard import show_dashboard
 from export_utils import create_csv, create_pdf_report
-
+from gemini import generate_retention_advice
 
 # ==================================================
 # PAGE CONFIGURATION
@@ -58,9 +59,51 @@ st.markdown("""
 
 /* Streamlit top header */
 header[data-testid="stHeader"] {
-    background: #ffffff !important;
+    background: #eaf7ff !important;
     border-bottom: 1px solid #e4eff7 !important;
     box-shadow: none !important;
+}
+
+/* Sidebar toggle (hamburger) button */
+button[kind="header"] {
+    background: #eaf7ff !important;
+    border-radius: 8px !important;
+}
+
+button[kind="header"]:hover {
+    background: #d7ecff !important;
+}
+
+/* Dark blue hamburger icon */
+button[kind="header"] svg {
+    fill: #12385f !important;
+    color: #12385f !important;
+    stroke: #12385f !important;
+}
+
+/* ---------- Fix Gemini Markdown text colors ---------- */
+
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li,
+[data-testid="stMarkdownContainer"] span,
+[data-testid="stMarkdownContainer"] strong,
+[data-testid="stMarkdownContainer"] em {
+    color: #2c3e50 !important;
+}
+
+/* Gemini section headings */
+[data-testid="stMarkdownContainer"] h1,
+[data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h3,
+[data-testid="stMarkdownContainer"] h4 {
+    color: #12385f !important;
+    font-weight: 700 !important;
+}
+
+/* Bullet points */
+[data-testid="stMarkdownContainer"] ul,
+[data-testid="stMarkdownContainer"] ol {
+    color: #2c3e50 !important;
 }
 
 
@@ -244,6 +287,40 @@ footer {
     visibility: hidden;
 }
 
+/* ===== Sidebar Collapse/Expand Button ===== */
+
+/* Button background */
+[data-testid="collapsedControl"]{
+    background: #d6ecff !important;
+    border-radius: 10px !important;
+    border: 1px solid #8fc3f5 !important;
+    padding: 6px !important;
+}
+
+/* Hover effect */
+[data-testid="collapsedControl"]:hover{
+    background: #bfe0ff !important;
+}
+
+/* Dark blue chevron icon */
+[data-testid="collapsedControl"] svg{
+    color: #12385f !important;
+    fill: #12385f !important;
+    stroke: #12385f !important;
+    stroke-width: 2px !important;
+}
+
+/* Make the icon slightly larger */
+[data-testid="collapsedControl"] svg{
+    width: 20px !important;
+    height: 20px !important;
+}
+[data-testid="collapsedControl"] *{
+    color: #12385f !important;
+    fill: #12385f !important;
+    stroke: #12385f !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -263,10 +340,10 @@ with st.sidebar:
     page = st.radio(
         "Navigation",
         [
-            " Dashboard",
-            " Single Prediction",
-            " CSV Upload",
-            " Export Reports"
+            "Dashboard",
+            "Single Prediction",
+            "CSV Upload",
+            "Export Reports"
         ],
         label_visibility="collapsed"
     )
@@ -402,7 +479,7 @@ def prediction_form():
 # DASHBOARD
 # ==================================================
 
-if page == " Dashboard":
+if page == "Dashboard":
 
     st.title("Customer Churn Analytics")
 
@@ -426,7 +503,7 @@ if page == " Dashboard":
 # SINGLE PREDICTION
 # ==================================================
 
-elif page == " Single Prediction":
+elif page == "Single Prediction":
 
     st.title("Single Customer Prediction")
 
@@ -494,6 +571,41 @@ elif page == " Single Prediction":
                 st.progress(
                     min(max(probability, 0), 1)
                 )
+                
+                # ---------------- Gemini AI Feedback ----------------
+
+                customer_for_ai = customer.copy()
+
+                customer_for_ai["Churn Probability"] = f"{probability * 100:.2f}%"
+                customer_for_ai["Risk Level"] = risk
+
+                st.divider()
+                st.subheader("Gemini AI Retention Advice")
+
+                try:
+                    with st.spinner("Generating AI retention advice..."):
+                        advice = generate_retention_advice(customer_for_ai)
+
+                    st.markdown(advice)
+
+                    # Save this prediction for Export Reports
+                    export_row = customer.copy()
+                    export_row["Prediction"] = result["prediction"]
+                    export_row["Churn Status"] = (
+                        "Likely to Churn"
+                        if result["prediction"]
+                        else "Not Likely to Churn"
+                    )
+                    export_row["Churn Probability"] = probability
+                    export_row["Gemini AI Advice"] = advice
+
+                    st.session_state["single_result"] = pd.DataFrame([export_row])
+
+                except Exception:
+                    st.info(
+                        "AI advice is temporarily unavailable. "
+                        "The churn prediction remains valid."
+                    )
 
         except FileNotFoundError:
 
@@ -512,7 +624,7 @@ elif page == " Single Prediction":
 # CSV UPLOAD
 # ==================================================
 
-elif page == "☁️ CSV Upload":
+elif page == "CSV Upload":
 
     st.title("CSV Upload & Prediction")
 
@@ -534,7 +646,7 @@ elif page == "☁️ CSV Upload":
             )
 
             st.success(
-                f"✓ {len(uploaded):,} customers loaded."
+                f" {len(uploaded):,} customers loaded."
             )
 
             st.subheader("Data Preview")
@@ -616,7 +728,7 @@ elif page == "☁️ CSV Upload":
 # EXPORT REPORTS
 # ==================================================
 
-elif page == " Export Reports":
+elif page == "Export Reports":
 
     st.title("Export Prediction Reports")
 
@@ -625,7 +737,17 @@ elif page == " Export Reports":
         "for analysis or reporting."
     )
 
-    results = st.session_state.get("results")
+    csv_results = st.session_state.get("results")
+    single_result = st.session_state.get("single_result")
+
+    if csv_results is not None:
+        results = csv_results
+        report_type = "CSV Prediction Report"
+    elif single_result is not None:
+        results = single_result
+        report_type = "Single Prediction Report"
+    else:
+        results = None
 
     if results is None:
 
@@ -635,7 +757,7 @@ elif page == " Export Reports":
 
     else:
 
-        st.subheader("Report Preview")
+        st.subheader(report_type)
 
         st.dataframe(
             results.head(10),
