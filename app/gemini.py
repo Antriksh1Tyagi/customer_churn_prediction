@@ -11,8 +11,8 @@ Phase 1:
 """
 
 import os
+import streamlit as st
 from typing import Optional
-
 from google import genai
 
 
@@ -32,7 +32,16 @@ def create_gemini_client() -> genai.Client:
         RuntimeError: If the client cannot be initialized.
     """
 
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = None
+
+    try:
+        if "GEMINI_API_KEY" in st.secrets:
+            api_key = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        pass
+
+    if not api_key:
+        api_key = os.getenv("GEMINI_API_KEY")
 
     if not api_key:
         raise ValueError(
@@ -167,5 +176,16 @@ Requirements:
 
         return response.text.strip()
 
-    except Exception as exc:
-        return f"Unable to generate retention advice: {exc}"
+    except Exception:
+        return (
+        "### Risk Summary\n"
+        "AI advice is temporarily unavailable.\n\n"
+        "### Why the customer may churn\n"
+        "The churn prediction remains valid, but personalized AI insights could not be generated at this time.\n\n"
+        "### Top 3 Retention Actions\n"
+        "1. Contact the customer proactively.\n"
+        "2. Review payment and support history.\n"
+        "3. Offer a personalized retention incentive.\n\n"
+        "### Suggested Communication Tone\n"
+        "Use a friendly, proactive, and supportive tone."
+    )
